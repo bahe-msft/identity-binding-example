@@ -8,57 +8,12 @@ This project demonstrates three different identity management approaches in Azur
 
 All three approaches are demonstrated using the same Go application that fetches a secret from Azure Key Vault. Each demo runs in its own namespace to avoid conflicts and provide clear separation. **Each application demonstrates using multiple managed identities in a single pod**, which is a common real-world scenario.
 
-## Project Structure
-
-```
-├── infra/
-│   ├── bicep/                    # Infrastructure as Code
-│   │   ├── main.bicep           # Main deployment template
-│   │   ├── aks-cluster.bicep    # AKS cluster with workload identity
-│   │   ├── identity-resources.bicep # Managed identities and Key Vault
-│   │   └── main.parameters.json # Deployment parameters
-│   └── podidentity/             # Pod Identity installation
-│       ├── README.md            # Installation guide
-│       └── install-pod-identity.sh # Installation script
-├── apps/
-│   ├── demo-app-go/             # Go application source code
-│   │   ├── main.go              # Main application
-│   │   ├── go.mod               # Go modules
-│   │   ├── Dockerfile           # Container image
-│   │   └── build-and-push.sh    # Build script for GHCR
-│   ├── demo-app-pi/             # Pod Identity deployment (demo-app-pi namespace)
-│   │   ├── deployment.yaml      # Kubernetes manifests with namespace
-│   │   └── configure-and-deploy.sh # Configuration script
-│   ├── demo-app-wi/             # Workload Identity deployment (demo-app-wi namespace)
-│   │   ├── deployment.yaml      # Kubernetes manifests with namespace
-│   │   └── configure-and-deploy.sh # Configuration script
-│   └── demo-app-ib/             # Identity Binding deployment (demo-app-ib namespace)
-│       ├── deployment.yaml      # Kubernetes manifests with namespace
-│       └── configure-and-deploy.sh # Configuration script
-└── README.md                    # This file
-```
-
-## Namespace Architecture
-
-Each identity approach runs in its own dedicated namespace:
-
-- **`demo-app-pi`**: Pod Identity demo with AAD Pod Identity components
-- **`demo-app-wi`**: Workload Identity demo with service account annotations
-- **`demo-app-ib`**: Identity Binding demo with IdentityBinding CRD
-
-This separation provides:
-- ✅ **Isolation**: No resource conflicts between different approaches
-- ✅ **Clarity**: Easy to understand which resources belong to which demo
-- ✅ **Concurrent Testing**: Run all three demos simultaneously
-- ✅ **Clean Separation**: Independent cleanup and troubleshooting
-
 ## Prerequisites
 
 - Azure CLI logged in and configured
 - kubectl configured for your AKS cluster
 - Helm 3.x installed
-- Docker installed (for building the demo app)
-- GitHub account (for container registry)
+- jq installed (for parsing JSON in scripts)
 
 ## Quick Start
 
@@ -81,79 +36,40 @@ az deployment group create \
   --parameters @main.parameters.json
 ```
 
-### Step 2: Build and Push Demo Application
+### Step 2: Install Pod Identity (Optional)
 
-1. Navigate to the `apps/demo-app-go` directory
-2. Set your GitHub username:
-
-```bash
-export GITHUB_USERNAME="your-github-username"
-```
-
-3. Build and push the container:
+Only needed if you want to test the Pod Identity demo:
 
 ```bash
-cd apps/demo-app-go
-./build-and-push.sh
+cd infra/podidentity
+./install-pod-identity.sh ib-demo-rg
 ```
 
-### Step 3: Get Deployment Values
+### Step 3: Deploy Demo Applications
 
-After infrastructure deployment, get the required values:
-
-```bash
-# Get resource group outputs
-az deployment group show \
-  --resource-group ib-demo-rg \
-  --name main \
-  --query properties.outputs
-
-# Get AKS credentials
-az aks get-credentials \
-  --resource-group ib-demo-rg \
-  --name <your-aks-cluster-name>
-```
-
-### Step 4: Deploy Demo Applications
-
-You can deploy one, two, or all three demos. Each runs in its own namespace.
+Each demo uses automated scripts that discover Azure resources from the resource group. Simply provide the resource group name:
 
 #### Option A: Pod Identity Demo (Legacy)
 
 ```bash
-# Install Pod Identity first
-cd infra/podidentity
-./install-pod-identity.sh
-
-# Configure and deploy the app in demo-app-pi namespace
-cd ../../apps/demo-app-pi
-export MANAGED_IDENTITY_1_RESOURCE_ID="..."
-export MANAGED_IDENTITY_1_CLIENT_ID="..."
-export KEYVAULT_URL="..."
-./configure-and-deploy.sh
+cd apps/demo-app-pi
+./configure-and-deploy.sh ib-demo-rg
 ```
+
+**Important**: Pod Identity requires manual VMSS assignment. The script will provide the exact commands needed.
 
 #### Option B: Workload Identity Demo (Recommended)
 
 ```bash
-# Deploy in demo-app-wi namespace
 cd apps/demo-app-wi
-export MANAGED_IDENTITY_2_CLIENT_ID="..."
-export AZURE_TENANT_ID="..."
-export KEYVAULT_URL="..."
-./configure-and-deploy.sh
+./configure-and-deploy.sh ib-demo-rg
 ```
 
 #### Option C: Identity Binding Demo (Newest)
 
 ```bash
-# Deploy in demo-app-ib namespace
 cd apps/demo-app-ib
-export MANAGED_IDENTITY_2_CLIENT_ID="..."
-export MANAGED_IDENTITY_2_RESOURCE_ID="..."
-export AKS_OIDC_ISSUER_URL="..."
-export KEYVAULT_URL="..."
-./configure-and-deploy.sh
+./configure-and-deploy.sh ib-demo-rg
 ```
 
 ## Testing the Applications
@@ -163,83 +79,78 @@ Each application runs as a background polling service that fetches secrets from 
 ### Pod Identity Demo (demo-app-pi namespace)
 ```bash
 # Check deployment status
-kubectl get pods -n demo-app-pi -l app=demo-app-pi
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl get pods -n demo-app-pi -l app=demo-app-pi
 
 # View application logs
-kubectl logs -f -l app=demo-app-pi -n demo-app-pi
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-app-pi -n demo-app-pi
 
 # Expected output:
 # === Iteration at 2024-01-15 10:30:00 ===
-# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
-# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
+# [pod-identity] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# [pod-identity] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
 
 ### Workload Identity Demo (demo-app-wi namespace)
 ```bash
 # Check deployment status
-kubectl get pods -n demo-app-wi -l app=demo-app-wi
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl get pods -n demo-app-wi -l app=demo-app-wi
 
 # View application logs
-kubectl logs -f -l app=demo-app-wi -n demo-app-wi
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-app-wi -n demo-app-wi
 
 # Expected output:
 # === Iteration at 2024-01-15 10:30:00 ===
-# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
-# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
+# [workload-identity] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# [workload-identity] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
 
 ### Identity Binding Demo (demo-app-ib namespace)
 ```bash
 # Check deployment status
-kubectl get pods -n demo-app-ib -l app=demo-app-ib
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl get pods -n demo-app-ib -l app=demo-app-ib
 
-# Check identity binding status
-kubectl get identitybinding -n demo-app-ib
+# Check ClusterRole and ClusterRoleBinding status
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl get clusterrole identity-binding-role
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl get clusterrolebinding identity-binding-role-binding
 
 # View application logs
-kubectl logs -f -l app=demo-app-ib -n demo-app-ib
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-app-ib -n demo-app-ib
 
 # Expected output:
 # === Iteration at 2024-01-15 10:30:00 ===
-# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
-# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
+# [identity-binding] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# [identity-binding] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
-
-### Log Analysis
-
-Each demo produces similar logs but uses different authentication methods:
-
-**Pod Identity**: Uses AAD Pod Identity MIC/NMI components to authenticate
-**Workload Identity**: Uses OIDC token exchange with federated identity credentials
-**Identity Binding**: Uses automated workload identity with managed FICs
-
-The key differences are in the underlying authentication mechanisms, not the application behavior.
-
 ## Key Differences
 
 ### Pod Identity (demo-app-pi namespace)
 - **Status**: Legacy approach (deprecated)
-- **Components**: Requires additional components (MIC/NMI)
-- **Configuration**: Uses `AzureIdentity` and `AzureIdentityBinding` CRDs
-- **Permissions**: Requires cluster-level permissions
-- **Setup Complexity**: Most complex setup
+- **Components**: Requires additional components (MIC/NMI) via Helm installation
+- **Configuration**: Uses `AzureIdentity` and `AzureIdentityBinding` CRDs (2 of each for dual identity support)
+- **RBAC Requirements**:
+  - Managed Identity Operator role over node resource group
+  - Reader role over managed identity resource group
+  - Manual VMSS identity assignment
+- **Setup Complexity**: Most complex setup with manual RBAC and VMSS steps
 - **Use Case**: Legacy applications, migration scenarios
 
 ### Workload Identity (demo-app-wi namespace)
 - **Status**: Current recommended approach
 - **Components**: Built into AKS, no additional components needed
 - **Configuration**: Uses service account annotations and federated identity credentials
-- **Security**: More secure and lightweight
-- **Setup Complexity**: Moderate setup
+- **RBAC Requirements**: Federated Identity Credentials (FICs) automatically created by Bicep
+- **Security**: More secure and lightweight than Pod Identity
+- **Setup Complexity**: Moderate setup with automated FIC management
 - **Use Case**: New applications, production workloads
 
 ### Identity Binding (demo-app-ib namespace)
-- **Status**: Newest approach (Preview/Experimental)
-- **Components**: Uses IdentityBinding CRD controller
-- **Configuration**: Completely automated - no FICs, no service account annotations, no volume mounts
-- **Automation**: Automatically creates and manages federated credentials, environment variables, and token volumes
-- **Setup Complexity**: Simplest setup (just create IdentityBinding CRD)
-- **Use Case**: Future applications, simplified management, maximum automation
+- **Status**: Newest approach using standard Kubernetes RBAC
+- **Components**: Uses ClusterRole and ClusterRoleBinding (no custom controllers)
+- **Configuration**: Standard Kubernetes RBAC with `use-managed-identity` verb
+- **RBAC Requirements**: ClusterRole grants access to both managed identity client IDs
+- **Automation**: Simplified approach using native Kubernetes permissions
+- **Setup Complexity**: Simplest RBAC-based setup
+- **Use Case**: Future applications, simplified management, standard Kubernetes patterns
 
 ## Architecture Overview
 
@@ -263,8 +174,8 @@ The key differences are in the underlying authentication mechanisms, not the app
                     ┌─────────────────────────┐
                     │   Managed Identities    │
                     │                         │
-                    │  • MI 1 (Pod Identity)  │
-                    │  • MI 2 (WI + IB)      │
+                    │  • mi-1 (All demos)     │
+                    │  • mi-2 (All demos)     │
                     └─────────────────────────┘
                                 │
                                 ▼
@@ -278,164 +189,35 @@ The key differences are in the underlying authentication mechanisms, not the app
 
 ### Managed Identity Usage
 
-- **MI 1 (`${namePrefix}-mi-podidentity`)**: Used by all three demos to demonstrate multiple identity scenarios
-  - **Pod Identity**: Assigned to VMSS (no FICs needed)
+- **MI 1 (`${namePrefix}-mi-1`)**: Used by all three demos to demonstrate multiple identity scenarios
+  - **Pod Identity**: Assigned to VMSS (manual step required)
   - **Workload Identity**: Has FIC for `demo-app-wi:workload-identity-sa`
-  - **Identity Binding**: No manual FICs (managed automatically by Identity Binding controller)
+  - **Identity Binding**: Uses ClusterRole permissions
 
-- **MI 2 (`${namePrefix}-mi-workloadidentity`)**: Used by all three demos to demonstrate multiple identity scenarios
-  - **Pod Identity**: Assigned to VMSS (no FICs needed)
+- **MI 2 (`${namePrefix}-mi-2`)**: Used by all three demos to demonstrate multiple identity scenarios
+  - **Pod Identity**: Assigned to VMSS (manual step required)
   - **Workload Identity**: Has FIC for `demo-app-wi:workload-identity-sa` (primary identity)
-  - **Identity Binding**: No manual FICs (managed automatically by Identity Binding controller, primary identity)
+  - **Identity Binding**: Uses ClusterRole permissions (primary identity)
 
 ### Infrastructure Setup
 
 #### **For Pod Identity**:
-- ✅ **VMSS Assignment**: Both managed identities are automatically assigned to the AKS node pool VMSS
-- ✅ **Pod Identity Components**: MIC (Managed Identity Controller) and NMI (Node Managed Identity)
+- ✅ **RBAC Setup**: Kubelet identity automatically granted Managed Identity Operator role (via Bicep)
+- ⚠️ **Manual VMSS Assignment**: Both managed identities must be manually assigned to AKS node pool VMSS
+- ✅ **Pod Identity Components**: MIC and NMI installed via Helm
+- ✅ **Dual AzureIdentity Resources**: Creates 2 AzureIdentity and 2 AzureIdentityBinding resources
 - ❌ **No FICs**: Pod Identity uses its own authentication mechanism
 
 #### **For Workload Identity**:
-- ✅ **Federated Identity Credentials**: 2 FICs total (1 per managed identity)
+- ✅ **Federated Identity Credentials**: 2 FICs total (1 per managed identity) automatically created via Bicep
 - ✅ **OIDC Integration**: Uses AKS OIDC issuer for token exchange
-- ✅ **Manual Configuration**: Service account annotations and volume mounts
+- ✅ **Service Account Configuration**: Automatic annotation and volume mount setup
 - ❌ **No VMSS Assignment**: Not needed for workload identity
 
 #### **For Identity Binding**:
-- ✅ **Automatic FIC Management**: Identity Binding controller creates and manages FICs automatically
-- ✅ **OIDC Integration**: Uses AKS OIDC issuer for token exchange (same as workload identity)
-- ✅ **Simplified Configuration**: Just the IdentityBinding CRD, no manual setup
+- ✅ **ClusterRole RBAC**: ClusterRole grants `use-managed-identity` verb for both MI client IDs
+- ✅ **Standard Kubernetes**: Uses native ClusterRole and ClusterRoleBinding resources
+- ✅ **Simplified Setup**: No custom controllers or FIC management needed
 - ❌ **No VMSS Assignment**: Not needed for identity binding
 
 **Key Feature**: Each demo demonstrates the real-world scenario of using multiple managed identities within a single pod, allowing applications to access different Azure resources with different identities as needed.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Permission Errors**: Ensure managed identities have proper Key Vault permissions
-2. **Token Exchange Errors**: Verify OIDC issuer URL and federated identity credentials
-3. **Pod Startup Issues**: Check image availability and environment variables
-4. **Namespace Issues**: Ensure you're using the correct namespace in kubectl commands
-
-### Useful Commands
-
-```bash
-# Check all demo namespaces
-kubectl get namespaces | grep demo-app
-
-# Check pod logs (specify namespace)
-kubectl logs <pod-name> -n <namespace>
-
-# Check service account annotations
-kubectl describe serviceaccount <sa-name> -n <namespace>
-
-# Check identity binding status (for identity binding demo)
-kubectl get identitybinding -n demo-app-ib
-
-# Test token acquisition
-kubectl exec <pod-name> -n <namespace> -- env | grep AZURE
-
-# View all resources in a namespace
-kubectl get all -n demo-app-pi
-kubectl get all -n demo-app-wi
-kubectl get all -n demo-app-ib
-```
-
-### Debugging by Demo Type
-
-#### Pod Identity Issues
-```bash
-# Check MIC and NMI pods
-kubectl get pods -n kube-system | grep aad-pod-identity
-
-# Check MIC logs
-kubectl logs -n kube-system -l "app.kubernetes.io/component=mic"
-
-# Check NMI logs
-kubectl logs -n kube-system -l "app.kubernetes.io/component=nmi"
-
-# Check Azure Identity and Binding
-kubectl get azureidentity -n demo-app-pi
-kubectl get azureidentitybinding -n demo-app-pi
-```
-
-#### Workload Identity Issues
-```bash
-# Check service account annotations
-kubectl describe sa workload-identity-sa -n demo-app-wi
-
-# Check federated identity credentials in Azure
-az identity federated-credential list --identity-name <identity-name> --resource-group <rg-name>
-
-# Verify OIDC issuer
-kubectl get --raw /.well-known/openid_configuration | jq .
-```
-
-#### Identity Binding Issues
-```bash
-# Check identity binding resource
-kubectl describe identitybinding demo-app-identity-binding -n demo-app-ib
-
-# Check if Identity Binding controller is running
-kubectl get pods -A | grep identity-binding
-```
-
-## Cleanup
-
-### Clean Up Individual Demos
-
-```bash
-# Clean up Pod Identity demo
-kubectl delete namespace demo-app-pi
-
-# Clean up Workload Identity demo
-kubectl delete namespace demo-app-wi
-
-# Clean up Identity Binding demo
-kubectl delete namespace demo-app-ib
-```
-
-### Clean Up Everything
-
-```bash
-# Delete all demo namespaces
-kubectl delete namespace demo-app-pi demo-app-wi demo-app-ib
-
-# Uninstall Pod Identity (if installed)
-helm uninstall aad-pod-identity --namespace kube-system
-
-# Delete Azure resources
-az group delete --name ib-demo-rg --yes --no-wait
-```
-
-## Environment Variables Reference
-
-### Pod Identity Demo
-- `MANAGED_IDENTITY_1_RESOURCE_ID`: Resource ID of the first managed identity (MI 1)
-- `MANAGED_IDENTITY_1_CLIENT_ID`: Client ID of the first managed identity (MI 1)
-- `MANAGED_IDENTITY_2_CLIENT_ID`: Client ID of the second managed identity (MI 2)
-- `KEYVAULT_URL`: Azure Key Vault URL
-
-### Workload Identity Demo
-- `MANAGED_IDENTITY_1_CLIENT_ID`: Client ID of the first managed identity (MI 1)
-- `MANAGED_IDENTITY_2_CLIENT_ID`: Client ID of the second managed identity (MI 2)
-- `AZURE_TENANT_ID`: Azure tenant ID
-- `KEYVAULT_URL`: Azure Key Vault URL
-
-### Identity Binding Demo
-- `MANAGED_IDENTITY_1_CLIENT_ID`: Client ID of the first managed identity (MI 1)
-- `MANAGED_IDENTITY_2_CLIENT_ID`: Client ID of the second managed identity (MI 2)
-- `MANAGED_IDENTITY_2_RESOURCE_ID`: Resource ID of the second managed identity (MI 2 - for IdentityBinding resource)
-- `AKS_OIDC_ISSUER_URL`: AKS cluster OIDC issuer URL
-- `KEYVAULT_URL`: Azure Key Vault URL
-
-> **Note**: All demos use both managed identities to demonstrate multiple identity scenarios. The applications run as background services that automatically poll Azure Key Vault every 30 seconds, displaying secret retrieval logs for each identity.
-
-## Contributing
-
-Feel free to submit issues and enhancement requests!
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
