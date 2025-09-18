@@ -36,10 +36,10 @@ spec:
       serviceAccountName: workload-identity-sa
       containers:
       - name: demo-app
-        image: ghcr.io/YOUR_GITHUB_USERNAME/demo-app-go:latest  # Replace with your image
-        ports:
-        - containerPort: 8080
+        image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:0ef8ba400c1beb327de659e862dff38ea8db6d59b27a93d24f1d9883b4ff473c
         env:
+        - name: AUTH_METHOD
+          value: "workload-identity"
         - name: KEYVAULT_URL
           value: "${KEYVAULT_URL}"  # Replace with your Key Vault URL
         - name: SECRET_NAME
@@ -77,18 +77,6 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
         volumeMounts:
         - name: azure-identity-token
           mountPath: /var/run/secrets/azure/tokens
@@ -102,19 +90,3 @@ spec:
               audience: api://AzureADTokenExchange
               expirationSeconds: 3600
               path: azure-identity-token
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: demo-app-wi-service
-  namespace: demo-app-wi
-  labels:
-    app: demo-app-wi
-spec:
-  selector:
-    app: demo-app-wi
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 8080
-  type: ClusterIP

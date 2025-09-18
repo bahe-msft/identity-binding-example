@@ -53,10 +53,10 @@ spec:
       serviceAccountName: pod-identity-sa
       containers:
       - name: demo-app
-        image: ghcr.io/YOUR_GITHUB_USERNAME/demo-app-go:latest  # Replace with your image
-        ports:
-        - containerPort: 8080
+        image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:0ef8ba400c1beb327de659e862dff38ea8db6d59b27a93d24f1d9883b4ff473c
         env:
+        - name: AUTH_METHOD
+          value: "pod-identity"
         - name: KEYVAULT_URL
           value: "${KEYVAULT_URL}"  # Replace with your Key Vault URL
         - name: SECRET_NAME
@@ -85,31 +85,3 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: demo-app-pi-service
-  namespace: demo-app-pi
-  labels:
-    app: demo-app-pi
-spec:
-  selector:
-    app: demo-app-pi
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 8080
-  type: ClusterIP

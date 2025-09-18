@@ -1,4 +1,4 @@
-# AKS Identity Binding Demo Project
+# AKS Identity Binding Demo
 
 This project demonstrates three different identity management approaches in Azure Kubernetes Service (AKS):
 
@@ -104,13 +104,13 @@ After infrastructure deployment, get the required values:
 ```bash
 # Get resource group outputs
 az deployment group show \
-  --resource-group aks-identity-demo-rg \
+  --resource-group ib-demo-rg \
   --name main \
   --query properties.outputs
 
 # Get AKS credentials
 az aks get-credentials \
-  --resource-group aks-identity-demo-rg \
+  --resource-group ib-demo-rg \
   --name <your-aks-cluster-name>
 ```
 
@@ -130,7 +130,6 @@ cd ../../apps/demo-app-pi
 export MANAGED_IDENTITY_1_RESOURCE_ID="..."
 export MANAGED_IDENTITY_1_CLIENT_ID="..."
 export KEYVAULT_URL="..."
-export YOUR_GITHUB_USERNAME="..."
 ./configure-and-deploy.sh
 ```
 
@@ -142,7 +141,6 @@ cd apps/demo-app-wi
 export MANAGED_IDENTITY_2_CLIENT_ID="..."
 export AZURE_TENANT_ID="..."
 export KEYVAULT_URL="..."
-export YOUR_GITHUB_USERNAME="..."
 ./configure-and-deploy.sh
 ```
 
@@ -155,29 +153,25 @@ export MANAGED_IDENTITY_2_CLIENT_ID="..."
 export MANAGED_IDENTITY_2_RESOURCE_ID="..."
 export AKS_OIDC_ISSUER_URL="..."
 export KEYVAULT_URL="..."
-export YOUR_GITHUB_USERNAME="..."
 ./configure-and-deploy.sh
 ```
 
 ## Testing the Applications
 
-Each application runs in its own namespace. You can test them by port-forwarding and accessing the endpoints:
+Each application runs as a background polling service that fetches secrets from Azure Key Vault every 30 seconds using multiple managed identities. You can test them by checking the logs:
 
 ### Pod Identity Demo (demo-app-pi namespace)
 ```bash
 # Check deployment status
 kubectl get pods -n demo-app-pi -l app=demo-app-pi
 
-# Port forward to the service
-kubectl port-forward service/demo-app-pi-service 8080:80 -n demo-app-pi
+# View application logs
+kubectl logs -f -l app=demo-app-pi -n demo-app-pi
 
-# Test endpoints (in another terminal)
-curl http://localhost:8080/health              # Health check
-curl http://localhost:8080/secret              # Fetch secret using first available identity
-curl http://localhost:8080/secret?identity=identity-1  # Use first managed identity
-curl http://localhost:8080/secret?identity=identity-2  # Use second managed identity
-curl http://localhost:8080/identities          # List all available identities
-curl http://localhost:8080/                    # Application info
+# Expected output:
+# === Iteration at 2024-01-15 10:30:00 ===
+# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
 
 ### Workload Identity Demo (demo-app-wi namespace)
@@ -185,16 +179,13 @@ curl http://localhost:8080/                    # Application info
 # Check deployment status
 kubectl get pods -n demo-app-wi -l app=demo-app-wi
 
-# Port forward to the service
-kubectl port-forward service/demo-app-wi-service 8080:80 -n demo-app-wi
+# View application logs
+kubectl logs -f -l app=demo-app-wi -n demo-app-wi
 
-# Test endpoints (in another terminal)
-curl http://localhost:8080/health              # Health check
-curl http://localhost:8080/secret              # Fetch secret using first available identity
-curl http://localhost:8080/secret?identity=identity-1  # Use first managed identity
-curl http://localhost:8080/secret?identity=identity-2  # Use second managed identity
-curl http://localhost:8080/identities          # List all available identities
-curl http://localhost:8080/                    # Application info
+# Expected output:
+# === Iteration at 2024-01-15 10:30:00 ===
+# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
 
 ### Identity Binding Demo (demo-app-ib namespace)
@@ -202,20 +193,27 @@ curl http://localhost:8080/                    # Application info
 # Check deployment status
 kubectl get pods -n demo-app-ib -l app=demo-app-ib
 
-# Check identity binding
+# Check identity binding status
 kubectl get identitybinding -n demo-app-ib
 
-# Port forward to the service
-kubectl port-forward service/demo-app-ib-service 8080:80 -n demo-app-ib
+# View application logs
+kubectl logs -f -l app=demo-app-ib -n demo-app-ib
 
-# Test endpoints (in another terminal)
-curl http://localhost:8080/health              # Health check
-curl http://localhost:8080/secret              # Fetch secret using first available identity
-curl http://localhost:8080/secret?identity=identity-1  # Use first managed identity
-curl http://localhost:8080/secret?identity=identity-2  # Use second managed identity
-curl http://localhost:8080/identities          # List all available identities
-curl http://localhost:8080/                    # Application info
+# Expected output:
+# === Iteration at 2024-01-15 10:30:00 ===
+# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
+
+### Log Analysis
+
+Each demo produces similar logs but uses different authentication methods:
+
+**Pod Identity**: Uses AAD Pod Identity MIC/NMI components to authenticate
+**Workload Identity**: Uses OIDC token exchange with federated identity credentials
+**Identity Binding**: Uses automated workload identity with managed FICs
+
+The key differences are in the underlying authentication mechanisms, not the application behavior.
 
 ## Key Differences
 
@@ -408,7 +406,7 @@ kubectl delete namespace demo-app-pi demo-app-wi demo-app-ib
 helm uninstall aad-pod-identity --namespace kube-system
 
 # Delete Azure resources
-az group delete --name aks-identity-demo-rg --yes --no-wait
+az group delete --name ib-demo-rg --yes --no-wait
 ```
 
 ## Environment Variables Reference
@@ -418,14 +416,12 @@ az group delete --name aks-identity-demo-rg --yes --no-wait
 - `MANAGED_IDENTITY_1_CLIENT_ID`: Client ID of the first managed identity (MI 1)
 - `MANAGED_IDENTITY_2_CLIENT_ID`: Client ID of the second managed identity (MI 2)
 - `KEYVAULT_URL`: Azure Key Vault URL
-- `YOUR_GITHUB_USERNAME`: GitHub username for container image
 
 ### Workload Identity Demo
 - `MANAGED_IDENTITY_1_CLIENT_ID`: Client ID of the first managed identity (MI 1)
 - `MANAGED_IDENTITY_2_CLIENT_ID`: Client ID of the second managed identity (MI 2)
 - `AZURE_TENANT_ID`: Azure tenant ID
 - `KEYVAULT_URL`: Azure Key Vault URL
-- `YOUR_GITHUB_USERNAME`: GitHub username for container image
 
 ### Identity Binding Demo
 - `MANAGED_IDENTITY_1_CLIENT_ID`: Client ID of the first managed identity (MI 1)
@@ -433,9 +429,8 @@ az group delete --name aks-identity-demo-rg --yes --no-wait
 - `MANAGED_IDENTITY_2_RESOURCE_ID`: Resource ID of the second managed identity (MI 2 - for IdentityBinding resource)
 - `AKS_OIDC_ISSUER_URL`: AKS cluster OIDC issuer URL
 - `KEYVAULT_URL`: Azure Key Vault URL
-- `YOUR_GITHUB_USERNAME`: GitHub username for container image
 
-> **Note**: All demos use both managed identities to demonstrate multiple identity scenarios. The applications can switch between identities using the `?identity=identity-1` or `?identity=identity-2` query parameters.
+> **Note**: All demos use both managed identities to demonstrate multiple identity scenarios. The applications run as background services that automatically poll Azure Key Vault every 30 seconds, displaying secret retrieval logs for each identity.
 
 ## Contributing
 

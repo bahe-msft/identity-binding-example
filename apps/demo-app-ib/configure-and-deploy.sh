@@ -44,20 +44,12 @@ if [ -z "$KEYVAULT_URL" ]; then
     exit 1
 fi
 
-if [ -z "$YOUR_GITHUB_USERNAME" ]; then
-    echo "Error: YOUR_GITHUB_USERNAME environment variable is not set"
-    echo "Please set it to your GitHub username for the container image"
-    echo "Example: export YOUR_GITHUB_USERNAME='yourusername'"
-    exit 1
-fi
-
 echo "Configuration values:"
 echo "- Managed Identity 1 Client ID: $MANAGED_IDENTITY_1_CLIENT_ID"
 echo "- Managed Identity 2 Client ID: $MANAGED_IDENTITY_2_CLIENT_ID"
 echo "- Managed Identity 2 Resource ID: $MANAGED_IDENTITY_2_RESOURCE_ID"
 echo "- AKS OIDC Issuer URL: $AKS_OIDC_ISSUER_URL"
 echo "- Key Vault URL: $KEYVAULT_URL"
-echo "- GitHub Username: $YOUR_GITHUB_USERNAME"
 echo ""
 
 # Create configured deployment file
@@ -68,7 +60,6 @@ sed -e "s|\${MANAGED_IDENTITY_1_CLIENT_ID}|$MANAGED_IDENTITY_1_CLIENT_ID|g" \
     -e "s|\${MANAGED_IDENTITY_2_RESOURCE_ID}|$MANAGED_IDENTITY_2_RESOURCE_ID|g" \
     -e "s|\${AKS_OIDC_ISSUER_URL}|$AKS_OIDC_ISSUER_URL|g" \
     -e "s|\${KEYVAULT_URL}|$KEYVAULT_URL|g" \
-    -e "s|YOUR_GITHUB_USERNAME|$YOUR_GITHUB_USERNAME|g" \
     deployment.yaml > deployment-configured.yaml
 
 echo "✅ Configured deployment file created: deployment-configured.yaml"
@@ -79,8 +70,7 @@ echo "2. Make sure workload identity is enabled in your AKS cluster"
 echo "3. Run: kubectl apply -f deployment-configured.yaml"
 echo "4. Check status: kubectl get pods -l app=demo-app-ib -n demo-app-ib"
 echo "5. Check identity binding: kubectl get identitybinding demo-app-identity-binding -n demo-app-ib"
-echo "6. Test: kubectl port-forward service/demo-app-ib-service 8080:80 -n demo-app-ib"
-echo "7. Visit: http://localhost:8080/secret"
+echo "6. View logs: kubectl logs -f -l app=demo-app-ib -n demo-app-ib"
 echo ""
 echo "Note: Identity Binding is a newer feature that simplifies the workload identity setup"
 echo "by automatically configuring the federated identity credentials and environment variables."

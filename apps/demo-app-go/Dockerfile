@@ -1,53 +1,26 @@
-# Build stage
-FROM golang:1.21-alpine AS builder
-
-# Set working directory
+# Stage 1: Download dependencies
+FROM golang:1.24 AS deps
 WORKDIR /app
-
-# Install git (needed for Go modules)
-RUN apk add --no-cache git
-
-# Copy go mod files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
+# Stage 2: Build application
+FROM golang:1.24 AS builder
+WORKDIR /app
+# Copy downloaded dependencies from deps stage
+COPY --from=deps /go/pkg /go/pkg
+COPY go.mod go.sum ./
 COPY . .
+# Build static binary with CGO disabled
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -a -ldflags '-extldflags "-static" -w -s' \
+    -trimpath \
+    -o main .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
-
-# Final stage
-FROM alpine:latest
-
-# Install ca-certificates for HTTPS calls
-RUN apk --no-cache add ca-certificates
-
-# Create a non-root user
-RUN adduser -D -s /bin/sh appuser
-
-WORKDIR /root/
-
-# Copy the binary from builder stage
-COPY --from=builder /app/main .
-
-# Change ownership to appuser
-RUN chown appuser:appuser /root/main
-
-# Switch to non-root user
-USER appuser
-
-# Expose port
-EXPOSE 8080
-
-# Set environment variables
-ENV PORT=8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
-
+# Stage 3: Final runtime image
+FROM mcr.microsoft.com/azurelinux/distroless/base:3.0
+WORKDIR /app
+# Copy only the binary from builder stage
+COPY --from=builder /app/main ./main
 # Run the application
 CMD ["./main"]

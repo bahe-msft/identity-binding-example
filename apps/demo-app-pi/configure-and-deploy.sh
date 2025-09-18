@@ -37,19 +37,11 @@ if [ -z "$KEYVAULT_URL" ]; then
     exit 1
 fi
 
-if [ -z "$YOUR_GITHUB_USERNAME" ]; then
-    echo "Error: YOUR_GITHUB_USERNAME environment variable is not set"
-    echo "Please set it to your GitHub username for the container image"
-    echo "Example: export YOUR_GITHUB_USERNAME='yourusername'"
-    exit 1
-fi
-
 echo "Configuration values:"
 echo "- Managed Identity 1 Resource ID: $MANAGED_IDENTITY_1_RESOURCE_ID"
 echo "- Managed Identity 1 Client ID: $MANAGED_IDENTITY_1_CLIENT_ID"
 echo "- Managed Identity 2 Client ID: $MANAGED_IDENTITY_2_CLIENT_ID"
 echo "- Key Vault URL: $KEYVAULT_URL"
-echo "- GitHub Username: $YOUR_GITHUB_USERNAME"
 echo ""
 
 # Create configured deployment file
@@ -59,7 +51,6 @@ sed -e "s|\${MANAGED_IDENTITY_1_RESOURCE_ID}|$MANAGED_IDENTITY_1_RESOURCE_ID|g" 
     -e "s|\${MANAGED_IDENTITY_1_CLIENT_ID}|$MANAGED_IDENTITY_1_CLIENT_ID|g" \
     -e "s|\${MANAGED_IDENTITY_2_CLIENT_ID}|$MANAGED_IDENTITY_2_CLIENT_ID|g" \
     -e "s|\${KEYVAULT_URL}|$KEYVAULT_URL|g" \
-    -e "s|YOUR_GITHUB_USERNAME|$YOUR_GITHUB_USERNAME|g" \
     deployment.yaml > deployment-configured.yaml
 
 echo "✅ Configured deployment file created: deployment-configured.yaml"
@@ -68,5 +59,4 @@ echo "To deploy:"
 echo "1. Make sure pod identity is installed in your cluster"
 echo "2. Run: kubectl apply -f deployment-configured.yaml"
 echo "3. Check status: kubectl get pods -l app=demo-app-pi -n demo-app-pi"
-echo "4. Test: kubectl port-forward service/demo-app-pi-service 8080:80 -n demo-app-pi"
-echo "5. Visit: http://localhost:8080/secret"
+echo "4. View logs: kubectl logs -f -l app=demo-app-pi -n demo-app-pi"
