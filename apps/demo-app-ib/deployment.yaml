@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app-ib
+  labels:
+    name: demo-app-ib
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: identity-binding-sa
+  namespace: demo-app-ib
+  labels:
+    app: demo-app-ib
+---
+# Identity Binding resource - this is the new feature being demonstrated
+apiVersion: azure.workload.identity/v1beta1
+kind: IdentityBinding
+metadata:
+  name: demo-app-identity-binding
+  namespace: demo-app-ib
+spec:
+  # The managed identity to bind
+  managedIdentity:
+    clientId: "${MANAGED_IDENTITY_2_CLIENT_ID}"  # Replace with actual client ID
+    resourceId: "${MANAGED_IDENTITY_2_RESOURCE_ID}"  # Replace with actual resource ID
+  # The service account to bind to
+  serviceAccount:
+    name: identity-binding-sa
+    namespace: demo-app-ib
+  # Token exchange configuration
+  tokenExchange:
+    audience: "api://AzureADTokenExchange"
+    issuer: "${AKS_OIDC_ISSUER_URL}"  # Replace with actual OIDC issuer URL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-ib
+  namespace: demo-app-ib
+  labels:
+    app: demo-app-ib
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-ib
+  template:
+    metadata:
+      labels:
+        app: demo-app-ib
+    spec:
+      serviceAccountName: identity-binding-sa
+      containers:
+      - name: demo-app
+        image: ghcr.io/YOUR_GITHUB_USERNAME/demo-app-go:latest  # Replace with your image
+        ports:
+        - containerPort: 8080
+        env:
+        - name: KEYVAULT_URL
+          value: "${KEYVAULT_URL}"  # Replace with your Key Vault URL
+        - name: SECRET_NAME
+          value: "demo-secret"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+        # Multiple identity environment variables - demonstrates using multiple identities in one pod
+        - name: MANAGED_IDENTITY_1_CLIENT_ID
+          value: "${MANAGED_IDENTITY_1_CLIENT_ID}"  # Replace with actual client ID
+        - name: MANAGED_IDENTITY_2_CLIENT_ID
+          value: "${MANAGED_IDENTITY_2_CLIENT_ID}"  # Replace with actual client ID
+        # Identity binding will automatically inject these environment variables
+        # based on the IdentityBinding resource
+        # - AZURE_CLIENT_ID (automatically injected)
+        # - AZURE_TENANT_ID (automatically injected)
+        # - AZURE_FEDERATED_TOKEN_FILE (automatically injected)
+        # - AZURE_AUTHORITY_HOST (automatically injected)
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        # Identity binding automatically mounts the token volume
+        # No manual volume mounts needed
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-ib-service
+  namespace: demo-app-ib
+  labels:
+    app: demo-app-ib
+spec:
+  selector:
+    app: demo-app-ib
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  type: ClusterIP

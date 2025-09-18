@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app-pi
+  labels:
+    name: demo-app-pi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-identity-sa
+  namespace: demo-app-pi
+  labels:
+    app: demo-app-pi
+---
+apiVersion: "aadpodidentity.k8s.io/v1"
+kind: AzureIdentity
+metadata:
+  name: pod-identity-azure-identity
+  namespace: demo-app-pi
+spec:
+  type: 0  # User-assigned managed identity
+  resourceID: "${MANAGED_IDENTITY_1_RESOURCE_ID}"  # Replace with actual resource ID
+  clientID: "${MANAGED_IDENTITY_1_CLIENT_ID}"      # Replace with actual client ID
+---
+apiVersion: "aadpodidentity.k8s.io/v1"
+kind: AzureIdentityBinding
+metadata:
+  name: pod-identity-binding
+  namespace: demo-app-pi
+spec:
+  azureIdentity: pod-identity-azure-identity
+  selector: pod-identity-selector
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-pi
+  namespace: demo-app-pi
+  labels:
+    app: demo-app-pi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-pi
+  template:
+    metadata:
+      labels:
+        app: demo-app-pi
+        aadpodidbinding: pod-identity-selector  # This label binds the pod to the identity
+    spec:
+      serviceAccountName: pod-identity-sa
+      containers:
+      - name: demo-app
+        image: ghcr.io/YOUR_GITHUB_USERNAME/demo-app-go:latest  # Replace with your image
+        ports:
+        - containerPort: 8080
+        env:
+        - name: KEYVAULT_URL
+          value: "${KEYVAULT_URL}"  # Replace with your Key Vault URL
+        - name: SECRET_NAME
+          value: "demo-secret"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+        # Multiple identity environment variables - demonstrates using multiple identities in one pod
+        - name: MANAGED_IDENTITY_1_CLIENT_ID
+          value: "${MANAGED_IDENTITY_1_CLIENT_ID}"  # Replace with actual client ID
+        - name: MANAGED_IDENTITY_2_CLIENT_ID
+          value: "${MANAGED_IDENTITY_2_CLIENT_ID}"  # Replace with actual client ID
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-pi-service
+  namespace: demo-app-pi
+  labels:
+    app: demo-app-pi
+spec:
+  selector:
+    app: demo-app-pi
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  type: ClusterIP
