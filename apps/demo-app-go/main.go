@@ -71,54 +71,112 @@ func main() {
 		log.Fatal("Both MANAGED_IDENTITY_1_CLIENT_ID and MANAGED_IDENTITY_2_CLIENT_ID environment variables must be set")
 	}
 
+	// Check if credentials should be rebuilt every run (default: false)
+	rebuildCredentials := os.Getenv("REBUILD_CREDENTIALS") == "true"
+
 	// Set up both identities using the specified authentication method
-	identities := make([]*IdentityConfig, 0, 2)
+	var identities []*IdentityConfig
 
-	// Setup first identity
-	cred1, err := createCredential(authMethod, clientID1)
-	if err != nil {
-		log.Fatalf("Failed to create identity 1 credential: %v", err)
+	// If not rebuilding credentials every run, set them up once
+	if !rebuildCredentials {
+		identities = make([]*IdentityConfig, 0, 2)
+
+		// Setup first identity
+		cred1, err := createCredential(authMethod, clientID1)
+		if err != nil {
+			log.Fatalf("Failed to create identity 1 credential: %v", err)
+		}
+
+		client1, err := azsecrets.NewClient(keyVaultURL, cred1, nil)
+		if err != nil {
+			log.Fatalf("Failed to create Key Vault client for identity 1: %v", err)
+		}
+
+		identities = append(identities, &IdentityConfig{
+			Name:     "identity-1",
+			ClientID: clientID1,
+			Client:   client1,
+		})
+
+		// Setup second identity
+		cred2, err := createCredential(authMethod, clientID2)
+		if err != nil {
+			log.Fatalf("Failed to create identity 2 credential: %v", err)
+		}
+
+		client2, err := azsecrets.NewClient(keyVaultURL, cred2, nil)
+		if err != nil {
+			log.Fatalf("Failed to create Key Vault client for identity 2: %v", err)
+		}
+
+		identities = append(identities, &IdentityConfig{
+			Name:     "identity-2",
+			ClientID: clientID2,
+			Client:   client2,
+		})
 	}
-
-	client1, err := azsecrets.NewClient(keyVaultURL, cred1, nil)
-	if err != nil {
-		log.Fatalf("Failed to create Key Vault client for identity 1: %v", err)
-	}
-
-	identities = append(identities, &IdentityConfig{
-		Name:     "identity-1",
-		ClientID: clientID1,
-		Client:   client1,
-	})
-
-	// Setup second identity
-	cred2, err := createCredential(authMethod, clientID2)
-	if err != nil {
-		log.Fatalf("Failed to create identity 2 credential: %v", err)
-	}
-
-	client2, err := azsecrets.NewClient(keyVaultURL, cred2, nil)
-	if err != nil {
-		log.Fatalf("Failed to create Key Vault client for identity 2: %v", err)
-	}
-
-	identities = append(identities, &IdentityConfig{
-		Name:     "identity-2",
-		ClientID: clientID2,
-		Client:   client2,
-	})
 
 	log.Printf("Authentication method: %s", authMethod)
 	log.Printf("Configured to use Key Vault: %s", keyVaultURL)
 	log.Printf("Secret name: %s", secretName)
 	log.Printf("Identity 1 Client ID: %s", clientID1)
 	log.Printf("Identity 2 Client ID: %s", clientID2)
+	log.Printf("Rebuild credentials every run: %t", rebuildCredentials)
 	log.Printf("Starting secret retrieval loop (every 30 seconds)...")
 
 	// Main loop - retrieve secrets with both identities every 30 seconds
 	for {
 		timestamp := time.Now().Format("2006-01-02 15:04:05")
 		log.Printf("\n=== Iteration at %s ===", timestamp)
+
+		// If rebuilding credentials every run, create them fresh
+		if rebuildCredentials {
+			identities = make([]*IdentityConfig, 0, 2)
+
+			// Setup first identity
+			cred1, err := createCredential(authMethod, clientID1)
+			if err != nil {
+				log.Printf("ERROR: Failed to create identity 1 credential: %v", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+
+			client1, err := azsecrets.NewClient(keyVaultURL, cred1, nil)
+			if err != nil {
+				log.Printf("ERROR: Failed to create Key Vault client for identity 1: %v", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+
+			identities = append(identities, &IdentityConfig{
+				Name:     "identity-1",
+				ClientID: clientID1,
+				Client:   client1,
+			})
+
+			// Setup second identity
+			cred2, err := createCredential(authMethod, clientID2)
+			if err != nil {
+				log.Printf("ERROR: Failed to create identity 2 credential: %v", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+
+			client2, err := azsecrets.NewClient(keyVaultURL, cred2, nil)
+			if err != nil {
+				log.Printf("ERROR: Failed to create Key Vault client for identity 2: %v", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+
+			identities = append(identities, &IdentityConfig{
+				Name:     "identity-2",
+				ClientID: clientID2,
+				Client:   client2,
+			})
+
+			log.Printf("Rebuilt credentials for iteration")
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 
@@ -137,8 +195,8 @@ func main() {
 				continue
 			}
 
-			log.Printf("retrieved secret content \"%s\" from akv using mi client id \"%s\"", 
-				*secret.Value, identity.ClientID)
+			log.Printf("[%s] retrieved secret content \"%s\" from akv using mi client id \"%s\"", 
+				authMethod, *secret.Value, identity.ClientID)
 		}
 
 		cancel()

@@ -10,15 +10,15 @@ param aksClusterName string
 @description('The OIDC issuer URL from the AKS cluster')
 param aksOidcIssuerUrl string
 
-// Create the first managed identity for pod identity demo
+// Create the first managed identity
 resource managedIdentity1 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: '${namePrefix}-mi-podidentity'
+  name: '${namePrefix}-mi-1'
   location: location
 }
 
-// Create the second managed identity for workload identity and identity binding demos
+// Create the second managed identity
 resource managedIdentity2 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: '${namePrefix}-mi-workloadidentity'
+  name: '${namePrefix}-mi-2'
   location: location
 }
 

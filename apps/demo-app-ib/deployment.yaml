@@ -61,7 +61,7 @@ spec:
       serviceAccountName: identity-binding-sa
       containers:
         - name: demo-app
-          image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:0ef8ba400c1beb327de659e862dff38ea8db6d59b27a93d24f1d9883b4ff473c
+          image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:912c6a64827e1e364aac8095642739605a74e98b6cbd85a5b16666df2bd91cda
           env:
             - name: AUTH_METHOD
               value: "identity-binding"

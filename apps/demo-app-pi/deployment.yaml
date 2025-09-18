@@ -16,7 +16,7 @@ metadata:
 apiVersion: "aadpodidentity.k8s.io/v1"
 kind: AzureIdentity
 metadata:
-  name: pod-identity-azure-identity
+  name: pod-identity-azure-identity-1
   namespace: demo-app-pi
 spec:
   type: 0  # User-assigned managed identity
@@ -24,12 +24,31 @@ spec:
   clientID: "${MANAGED_IDENTITY_1_CLIENT_ID}"      # Replace with actual client ID
 ---
 apiVersion: "aadpodidentity.k8s.io/v1"
-kind: AzureIdentityBinding
+kind: AzureIdentity
 metadata:
-  name: pod-identity-binding
+  name: pod-identity-azure-identity-2
   namespace: demo-app-pi
 spec:
-  azureIdentity: pod-identity-azure-identity
+  type: 0  # User-assigned managed identity
+  resourceID: "${MANAGED_IDENTITY_2_RESOURCE_ID}"  # Replace with actual resource ID
+  clientID: "${MANAGED_IDENTITY_2_CLIENT_ID}"      # Replace with actual client ID
+---
+apiVersion: "aadpodidentity.k8s.io/v1"
+kind: AzureIdentityBinding
+metadata:
+  name: pod-identity-binding-1
+  namespace: demo-app-pi
+spec:
+  azureIdentity: pod-identity-azure-identity-1
+  selector: pod-identity-selector
+---
+apiVersion: "aadpodidentity.k8s.io/v1"
+kind: AzureIdentityBinding
+metadata:
+  name: pod-identity-binding-2
+  namespace: demo-app-pi
+spec:
+  azureIdentity: pod-identity-azure-identity-2
   selector: pod-identity-selector
 ---
 apiVersion: apps/v1
@@ -53,7 +72,7 @@ spec:
       serviceAccountName: pod-identity-sa
       containers:
       - name: demo-app
-        image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:0ef8ba400c1beb327de659e862dff38ea8db6d59b27a93d24f1d9883b4ff473c
+        image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:912c6a64827e1e364aac8095642739605a74e98b6cbd85a5b16666df2bd91cda
         env:
         - name: AUTH_METHOD
           value: "pod-identity"

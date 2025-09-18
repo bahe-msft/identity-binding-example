@@ -41,6 +41,7 @@ fi
 MANAGED_IDENTITY_1_CLIENT_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[0].clientId')
 MANAGED_IDENTITY_1_RESOURCE_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[0].resourceId')
 MANAGED_IDENTITY_2_CLIENT_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[1].clientId')
+MANAGED_IDENTITY_2_RESOURCE_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[1].resourceId')
 
 # Get Key Vault
 echo "- Finding Key Vault..."
@@ -57,6 +58,7 @@ echo ""
 echo "Configuration values:"
 echo "- Managed Identity 1 Resource ID: $MANAGED_IDENTITY_1_RESOURCE_ID"
 echo "- Managed Identity 1 Client ID: $MANAGED_IDENTITY_1_CLIENT_ID"
+echo "- Managed Identity 2 Resource ID: $MANAGED_IDENTITY_2_RESOURCE_ID"
 echo "- Managed Identity 2 Client ID: $MANAGED_IDENTITY_2_CLIENT_ID"
 echo "- Key Vault URL: $KEYVAULT_URL"
 echo ""
@@ -66,6 +68,7 @@ echo "Generating configured deployment file..."
 
 sed -e "s|\${MANAGED_IDENTITY_1_RESOURCE_ID}|$MANAGED_IDENTITY_1_RESOURCE_ID|g" \
     -e "s|\${MANAGED_IDENTITY_1_CLIENT_ID}|$MANAGED_IDENTITY_1_CLIENT_ID|g" \
+    -e "s|\${MANAGED_IDENTITY_2_RESOURCE_ID}|$MANAGED_IDENTITY_2_RESOURCE_ID|g" \
     -e "s|\${MANAGED_IDENTITY_2_CLIENT_ID}|$MANAGED_IDENTITY_2_CLIENT_ID|g" \
     -e "s|\${KEYVAULT_URL}|$KEYVAULT_URL|g" \
     deployment.yaml > deployment-configured.yaml

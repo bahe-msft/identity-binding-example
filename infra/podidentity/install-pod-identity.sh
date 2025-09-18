@@ -8,6 +8,37 @@ set -e
 echo "Azure AD Pod Identity Installation"
 echo "=================================="
 
+# Check if resource group is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <resource-group-name>"
+    echo "Example: $0 ib-demo-rg"
+    exit 1
+fi
+
+RESOURCE_GROUP="$1"
+
+echo "Resource Group: $RESOURCE_GROUP"
+echo ""
+echo "Retrieving Azure resources..."
+
+# Check if resource group exists
+if ! az group show --name "$RESOURCE_GROUP" &>/dev/null; then
+    echo "Error: Resource group '$RESOURCE_GROUP' not found"
+    exit 1
+fi
+
+# Get AKS cluster
+echo "- Finding AKS cluster..."
+AKS_CLUSTER_NAME=$(az aks list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+
+if [ -z "$AKS_CLUSTER_NAME" ]; then
+    echo "Error: No AKS cluster found in resource group '$RESOURCE_GROUP'"
+    exit 1
+fi
+
+echo "Found AKS cluster: $AKS_CLUSTER_NAME"
+echo ""
+
 # Check if kubectl is available
 if ! command -v kubectl &> /dev/null; then
     echo "Error: kubectl is not installed or not in PATH"
@@ -21,19 +52,28 @@ if ! command -v helm &> /dev/null; then
     exit 1
 fi
 
-# Check if connected to a cluster
-if ! kubectl cluster-info &> /dev/null; then
-    echo "Error: Unable to connect to Kubernetes cluster"
-    echo "Please ensure kubectl is configured correctly"
-    exit 1
-fi
-
 echo "✅ Prerequisites check passed"
 echo ""
 
-# Get cluster info
-CLUSTER_NAME=$(kubectl config current-context)
-echo "Installing Pod Identity on cluster: $CLUSTER_NAME"
+# Get kubeconfig to local file
+KUBECONFIG_FILE="./kubeconfig-${RESOURCE_GROUP}-${AKS_CLUSTER_NAME}"
+echo "Getting AKS cluster credentials..."
+az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME" --file "$KUBECONFIG_FILE" --overwrite-existing
+
+echo "✅ Kubeconfig saved to: $KUBECONFIG_FILE"
+echo ""
+
+# Set kubeconfig for this session
+export KUBECONFIG="$KUBECONFIG_FILE"
+
+# Check if connected to the cluster
+if ! kubectl cluster-info &> /dev/null; then
+    echo "Error: Unable to connect to Kubernetes cluster"
+    echo "Please ensure the cluster is accessible"
+    exit 1
+fi
+
+echo "Installing Pod Identity on cluster: $AKS_CLUSTER_NAME"
 echo ""
 
 # Ask for confirmation
@@ -76,5 +116,5 @@ echo "2. Configure your applications to use Pod Identity"
 echo "3. Test the setup with the demo applications"
 echo ""
 echo "For troubleshooting, check the logs with:"
-echo "  kubectl logs -n kube-system -l \"app.kubernetes.io/component=mic\""
-echo "  kubectl logs -n kube-system -l \"app.kubernetes.io/component=nmi\""
+echo "  KUBECONFIG=$KUBECONFIG_FILE kubectl logs -n kube-system -l \"app.kubernetes.io/component=mic\""
+echo "  KUBECONFIG=$KUBECONFIG_FILE kubectl logs -n kube-system -l \"app.kubernetes.io/component=nmi\""
