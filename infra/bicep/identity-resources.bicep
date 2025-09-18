@@ -24,7 +24,7 @@ resource managedIdentity2 'Microsoft.ManagedIdentity/userAssignedIdentities@2023
 
 // Create Azure Key Vault
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: '${namePrefix}-kv-${uniqueString(resourceGroup().id)}'
+  name: 'akv${uniqueString(resourceGroup().id)}'
   location: location
   properties: {
     sku: {
@@ -33,14 +33,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     }
     tenantId: tenant().tenantId
     enableRbacAuthorization: true
-    enableSoftDelete: true
-    softDeleteRetentionInDays: 7
-    enablePurgeProtection: false
-    networkAcls: {
-      defaultAction: 'Allow'
-      bypass: 'AzureServices'
-    }
-    accessPolicies: []
   }
 }
 
@@ -56,7 +48,7 @@ resource sampleSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
 
 // Grant Key Vault Secrets User role to both managed identities
 resource keyVaultSecretsUserRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
+  scope: keyVault
   name: '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
 }
 
