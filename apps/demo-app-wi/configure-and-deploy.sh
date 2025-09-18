@@ -8,35 +8,55 @@ set -e
 echo "Workload Identity Deployment Configuration"
 echo "=========================================="
 
-# Check if required environment variables are set
-if [ -z "$MANAGED_IDENTITY_1_CLIENT_ID" ]; then
-    echo "Error: MANAGED_IDENTITY_1_CLIENT_ID environment variable is not set"
-    echo "Please set it to the client ID of your first managed identity"
-    echo "Example: export MANAGED_IDENTITY_1_CLIENT_ID='12345678-1234-1234-1234-123456789abc'"
+# Check if resource group is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <resource-group-name>"
+    echo "Example: $0 ib-demo-rg"
     exit 1
 fi
 
-if [ -z "$MANAGED_IDENTITY_2_CLIENT_ID" ]; then
-    echo "Error: MANAGED_IDENTITY_2_CLIENT_ID environment variable is not set"
-    echo "Please set it to the client ID of your second managed identity"
-    echo "Example: export MANAGED_IDENTITY_2_CLIENT_ID='12345678-1234-1234-1234-123456789abc'"
+RESOURCE_GROUP="$1"
+
+echo "Resource Group: $RESOURCE_GROUP"
+echo ""
+echo "Retrieving Azure resources..."
+
+# Check if resource group exists
+if ! az group show --name "$RESOURCE_GROUP" &>/dev/null; then
+    echo "Error: Resource group '$RESOURCE_GROUP' not found"
     exit 1
 fi
 
-if [ -z "$AZURE_TENANT_ID" ]; then
-    echo "Error: AZURE_TENANT_ID environment variable is not set"
-    echo "Please set it to your Azure tenant ID"
-    echo "Example: export AZURE_TENANT_ID='12345678-1234-1234-1234-123456789abc'"
+# Get managed identities
+echo "- Finding managed identities..."
+MANAGED_IDENTITIES=$(az identity list --resource-group "$RESOURCE_GROUP" --query "[].{name:name,clientId:clientId,resourceId:id}" -o json)
+
+if [ "$(echo "$MANAGED_IDENTITIES" | jq length)" -lt 2 ]; then
+    echo "Error: Expected at least 2 managed identities in resource group '$RESOURCE_GROUP'"
+    echo "Found: $(echo "$MANAGED_IDENTITIES" | jq length)"
     exit 1
 fi
 
-if [ -z "$KEYVAULT_URL" ]; then
-    echo "Error: KEYVAULT_URL environment variable is not set"
-    echo "Please set it to your Key Vault URL"
-    echo "Example: export KEYVAULT_URL='https://your-keyvault.vault.azure.net/'"
+# Get the first two managed identities (sorted by name)
+MANAGED_IDENTITY_1_CLIENT_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[0].clientId')
+MANAGED_IDENTITY_2_CLIENT_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[1].clientId')
+
+# Get Key Vault
+echo "- Finding Key Vault..."
+KEYVAULT_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+
+if [ -z "$KEYVAULT_NAME" ]; then
+    echo "Error: No Key Vault found in resource group '$RESOURCE_GROUP'"
     exit 1
 fi
 
+KEYVAULT_URL=$(az keyvault show --name "$KEYVAULT_NAME" --resource-group "$RESOURCE_GROUP" --query "properties.vaultUri" -o tsv)
+
+# Get Azure Tenant ID
+echo "- Getting Azure Tenant ID..."
+AZURE_TENANT_ID=$(az account show --query "tenantId" -o tsv)
+
+echo ""
 echo "Configuration values:"
 echo "- Managed Identity 1 Client ID: $MANAGED_IDENTITY_1_CLIENT_ID"
 echo "- Managed Identity 2 Client ID: $MANAGED_IDENTITY_2_CLIENT_ID"
@@ -55,12 +75,35 @@ sed -e "s|\${MANAGED_IDENTITY_1_CLIENT_ID}|$MANAGED_IDENTITY_1_CLIENT_ID|g" \
 
 echo "✅ Configured deployment file created: deployment-configured.yaml"
 echo ""
-echo "To deploy:"
-echo "1. Make sure workload identity is enabled in your AKS cluster"
-echo "2. Make sure the federated identity credential is configured for this service account"
-echo "3. Run: kubectl apply -f deployment-configured.yaml"
-echo "4. Check status: kubectl get pods -l app=demo-app-wi -n demo-app-wi"
-echo "5. View logs: kubectl logs -f -l app=demo-app-wi -n demo-app-wi"
+
+# Get AKS cluster for kubeconfig
+echo "Getting AKS cluster credentials..."
+AKS_CLUSTER_NAME=$(az aks list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+
+if [ -z "$AKS_CLUSTER_NAME" ]; then
+    echo "Error: No AKS cluster found in resource group '$RESOURCE_GROUP'"
+    exit 1
+fi
+
+# Get kubeconfig to local file
+KUBECONFIG_FILE="./kubeconfig-${RESOURCE_GROUP}-${AKS_CLUSTER_NAME}"
+az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME" --file "$KUBECONFIG_FILE" --overwrite-existing
+
+echo "✅ Kubeconfig saved to: $KUBECONFIG_FILE"
+echo ""
+
+# Deploy the application
+echo "Deploying Workload Identity demo application..."
+export KUBECONFIG="$KUBECONFIG_FILE"
+
+kubectl apply -f deployment-configured.yaml
+
+echo ""
+echo "✅ Workload Identity demo deployed successfully!"
+echo ""
+echo "To monitor the deployment:"
+echo "1. Check status: KUBECONFIG=$KUBECONFIG_FILE kubectl get pods -l app=demo-app-wi -n demo-app-wi"
+echo "2. View logs: KUBECONFIG=$KUBECONFIG_FILE kubectl logs -f -l app=demo-app-wi -n demo-app-wi"
 echo ""
 echo "Note: The federated identity credential should be configured with:"
 echo "- Issuer: Your AKS OIDC issuer URL"

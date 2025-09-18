@@ -8,46 +8,70 @@ set -e
 echo "Identity Binding Deployment Configuration"
 echo "========================================"
 
-# Check if required environment variables are set
-if [ -z "$MANAGED_IDENTITY_1_CLIENT_ID" ]; then
-    echo "Error: MANAGED_IDENTITY_1_CLIENT_ID environment variable is not set"
-    echo "Please set it to the client ID of your first managed identity"
-    echo "Example: export MANAGED_IDENTITY_1_CLIENT_ID='12345678-1234-1234-1234-123456789abc'"
+# Check if resource group is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <resource-group-name>"
+    echo "Example: $0 ib-demo-rg"
     exit 1
 fi
 
-if [ -z "$MANAGED_IDENTITY_2_CLIENT_ID" ]; then
-    echo "Error: MANAGED_IDENTITY_2_CLIENT_ID environment variable is not set"
-    echo "Please set it to the client ID of your second managed identity"
-    echo "Example: export MANAGED_IDENTITY_2_CLIENT_ID='12345678-1234-1234-1234-123456789abc'"
+RESOURCE_GROUP="$1"
+
+echo "Resource Group: $RESOURCE_GROUP"
+echo ""
+echo "Retrieving Azure resources..."
+
+# Check if resource group exists
+if ! az group show --name "$RESOURCE_GROUP" &>/dev/null; then
+    echo "Error: Resource group '$RESOURCE_GROUP' not found"
     exit 1
 fi
 
-if [ -z "$MANAGED_IDENTITY_2_RESOURCE_ID" ]; then
-    echo "Error: MANAGED_IDENTITY_2_RESOURCE_ID environment variable is not set"
-    echo "Please set it to the resource ID of your second managed identity"
-    echo "Example: export MANAGED_IDENTITY_2_RESOURCE_ID='/subscriptions/.../resourceGroups/.../providers/Microsoft.ManagedIdentity/userAssignedIdentities/...'"
+# Get managed identities
+echo "- Finding managed identities..."
+MANAGED_IDENTITIES=$(az identity list --resource-group "$RESOURCE_GROUP" --query "[].{name:name,clientId:clientId,resourceId:id}" -o json)
+
+if [ "$(echo "$MANAGED_IDENTITIES" | jq length)" -lt 2 ]; then
+    echo "Error: Expected at least 2 managed identities in resource group '$RESOURCE_GROUP'"
+    echo "Found: $(echo "$MANAGED_IDENTITIES" | jq length)"
     exit 1
 fi
+
+# Get the first two managed identities (sorted by name)
+MANAGED_IDENTITY_1_CLIENT_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[0].clientId')
+MANAGED_IDENTITY_2_CLIENT_ID=$(echo "$MANAGED_IDENTITIES" | jq -r 'sort_by(.name)[1].clientId')
+
+# Get Key Vault
+echo "- Finding Key Vault..."
+KEYVAULT_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+
+if [ -z "$KEYVAULT_NAME" ]; then
+    echo "Error: No Key Vault found in resource group '$RESOURCE_GROUP'"
+    exit 1
+fi
+
+KEYVAULT_URL=$(az keyvault show --name "$KEYVAULT_NAME" --resource-group "$RESOURCE_GROUP" --query "properties.vaultUri" -o tsv)
+
+# Get AKS cluster and OIDC issuer URL
+echo "- Finding AKS cluster..."
+AKS_CLUSTER_NAME=$(az aks list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+
+if [ -z "$AKS_CLUSTER_NAME" ]; then
+    echo "Error: No AKS cluster found in resource group '$RESOURCE_GROUP'"
+    exit 1
+fi
+
+AKS_OIDC_ISSUER_URL=$(az aks show --name "$AKS_CLUSTER_NAME" --resource-group "$RESOURCE_GROUP" --query "oidcIssuerProfile.issuerUrl" -o tsv)
 
 if [ -z "$AKS_OIDC_ISSUER_URL" ]; then
-    echo "Error: AKS_OIDC_ISSUER_URL environment variable is not set"
-    echo "Please set it to your AKS cluster's OIDC issuer URL"
-    echo "Example: export AKS_OIDC_ISSUER_URL='https://oidc.prod-aks.azure.com/12345678-1234-1234-1234-123456789abc/'"
+    echo "Error: AKS cluster '$AKS_CLUSTER_NAME' does not have OIDC issuer enabled"
     exit 1
 fi
 
-if [ -z "$KEYVAULT_URL" ]; then
-    echo "Error: KEYVAULT_URL environment variable is not set"
-    echo "Please set it to your Key Vault URL"
-    echo "Example: export KEYVAULT_URL='https://your-keyvault.vault.azure.net/'"
-    exit 1
-fi
-
+echo ""
 echo "Configuration values:"
 echo "- Managed Identity 1 Client ID: $MANAGED_IDENTITY_1_CLIENT_ID"
 echo "- Managed Identity 2 Client ID: $MANAGED_IDENTITY_2_CLIENT_ID"
-echo "- Managed Identity 2 Resource ID: $MANAGED_IDENTITY_2_RESOURCE_ID"
 echo "- AKS OIDC Issuer URL: $AKS_OIDC_ISSUER_URL"
 echo "- Key Vault URL: $KEYVAULT_URL"
 echo ""
@@ -57,20 +81,35 @@ echo "Generating configured deployment file..."
 
 sed -e "s|\${MANAGED_IDENTITY_1_CLIENT_ID}|$MANAGED_IDENTITY_1_CLIENT_ID|g" \
     -e "s|\${MANAGED_IDENTITY_2_CLIENT_ID}|$MANAGED_IDENTITY_2_CLIENT_ID|g" \
-    -e "s|\${MANAGED_IDENTITY_2_RESOURCE_ID}|$MANAGED_IDENTITY_2_RESOURCE_ID|g" \
     -e "s|\${AKS_OIDC_ISSUER_URL}|$AKS_OIDC_ISSUER_URL|g" \
     -e "s|\${KEYVAULT_URL}|$KEYVAULT_URL|g" \
     deployment.yaml > deployment-configured.yaml
 
 echo "✅ Configured deployment file created: deployment-configured.yaml"
 echo ""
-echo "To deploy:"
-echo "1. Make sure the Identity Binding CRD and controller are installed in your cluster"
-echo "2. Make sure workload identity is enabled in your AKS cluster"
-echo "3. Run: kubectl apply -f deployment-configured.yaml"
-echo "4. Check status: kubectl get pods -l app=demo-app-ib -n demo-app-ib"
-echo "5. Check identity binding: kubectl get identitybinding demo-app-identity-binding -n demo-app-ib"
-echo "6. View logs: kubectl logs -f -l app=demo-app-ib -n demo-app-ib"
+
+# Get kubeconfig to local file (AKS_CLUSTER_NAME already retrieved above)
+KUBECONFIG_FILE="./kubeconfig-${RESOURCE_GROUP}-${AKS_CLUSTER_NAME}"
+echo "Getting AKS cluster credentials..."
+az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME" --file "$KUBECONFIG_FILE" --overwrite-existing
+
+echo "✅ Kubeconfig saved to: $KUBECONFIG_FILE"
 echo ""
-echo "Note: Identity Binding is a newer feature that simplifies the workload identity setup"
-echo "by automatically configuring the federated identity credentials and environment variables."
+
+# Deploy the application
+echo "Deploying Identity Binding demo application..."
+export KUBECONFIG="$KUBECONFIG_FILE"
+
+kubectl apply -f deployment-configured.yaml
+
+echo ""
+echo "✅ Identity Binding demo deployed successfully!"
+echo ""
+echo "To monitor the deployment:"
+echo "1. Check status: KUBECONFIG=$KUBECONFIG_FILE kubectl get pods -l app=demo-app-ib -n demo-app-ib"
+echo "2. Check cluster role: KUBECONFIG=$KUBECONFIG_FILE kubectl get clusterrole identity-binding-role"
+echo "3. Check cluster role binding: KUBECONFIG=$KUBECONFIG_FILE kubectl get clusterrolebinding identity-binding-role-binding"
+echo "4. View logs: KUBECONFIG=$KUBECONFIG_FILE kubectl logs -f -l app=demo-app-ib -n demo-app-ib"
+echo ""
+echo "Note: Identity Binding is demonstrated using ClusterRole and ClusterRoleBinding"
+echo "to grant the service account permission to use the specified managed identity."

@@ -1,2 +1,4 @@
 .claude/settings.local.json
 *.kubeconfig
+deployment-configured.yaml
+kubeconfig-*

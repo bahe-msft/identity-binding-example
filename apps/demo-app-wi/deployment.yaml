@@ -13,7 +13,7 @@ metadata:
   labels:
     app: demo-app-wi
   annotations:
-    azure.workload.identity/client-id: "${MANAGED_IDENTITY_2_CLIENT_ID}"  # Replace with actual client ID
+    azure.workload.identity/client-id: "${MANAGED_IDENTITY_2_CLIENT_ID}" # Replace with actual client ID
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,62 +31,40 @@ spec:
     metadata:
       labels:
         app: demo-app-wi
-        azure.workload.identity/use: "true"  # Enable workload identity
+        azure.workload.identity/use: "true" # Enable workload identity
     spec:
       serviceAccountName: workload-identity-sa
       containers:
-      - name: demo-app
-        image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:0ef8ba400c1beb327de659e862dff38ea8db6d59b27a93d24f1d9883b4ff473c
-        env:
-        - name: AUTH_METHOD
-          value: "workload-identity"
-        - name: KEYVAULT_URL
-          value: "${KEYVAULT_URL}"  # Replace with your Key Vault URL
-        - name: SECRET_NAME
-          value: "demo-secret"
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: SERVICE_ACCOUNT
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.serviceAccountName
-        # Multiple identity environment variables - demonstrates using multiple identities in one pod
-        - name: MANAGED_IDENTITY_1_CLIENT_ID
-          value: "${MANAGED_IDENTITY_1_CLIENT_ID}"  # Replace with actual client ID
-        - name: MANAGED_IDENTITY_2_CLIENT_ID
-          value: "${MANAGED_IDENTITY_2_CLIENT_ID}"  # Replace with actual client ID
-        # Workload identity specific environment variables (for Azure SDK compatibility)
-        - name: AZURE_CLIENT_ID
-          value: "${MANAGED_IDENTITY_2_CLIENT_ID}"  # Primary identity for workload identity
-        - name: AZURE_TENANT_ID
-          value: "${AZURE_TENANT_ID}"  # Replace with your tenant ID
-        - name: AZURE_FEDERATED_TOKEN_FILE
-          value: "/var/run/secrets/azure/tokens/azure-identity-token"
-        - name: AZURE_AUTHORITY_HOST
-          value: "https://login.microsoftonline.com/"
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "50m"
-          limits:
-            memory: "128Mi"
-            cpu: "100m"
-        volumeMounts:
-        - name: azure-identity-token
-          mountPath: /var/run/secrets/azure/tokens
-          readOnly: true
-      volumes:
-      - name: azure-identity-token
-        projected:
-          defaultMode: 420
-          sources:
-          - serviceAccountToken:
-              audience: api://AzureADTokenExchange
-              expirationSeconds: 3600
-              path: azure-identity-token
+        - name: demo-app
+          image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:0ef8ba400c1beb327de659e862dff38ea8db6d59b27a93d24f1d9883b4ff473c
+          env:
+            - name: AUTH_METHOD
+              value: "workload-identity"
+            - name: KEYVAULT_URL
+              value: "${KEYVAULT_URL}" # Replace with your Key Vault URL
+            - name: SECRET_NAME
+              value: "demo-secret"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+            # Multiple identity environment variables - demonstrates using multiple identities in one pod
+            - name: MANAGED_IDENTITY_1_CLIENT_ID
+              value: "${MANAGED_IDENTITY_1_CLIENT_ID}" # Replace with actual client ID
+            - name: MANAGED_IDENTITY_2_CLIENT_ID
+              value: "${MANAGED_IDENTITY_2_CLIENT_ID}" # Replace with actual client ID
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
