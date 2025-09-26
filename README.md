@@ -1,12 +1,13 @@
 # AKS Identity Binding Demo
 
-This project demonstrates three different identity management approaches in Azure Kubernetes Service (AKS):
+This project demonstrates four different identity management approaches in Azure Kubernetes Service (AKS):
 
 1. **Pod Identity** (Legacy approach) - deployed in `demo-app-pi` namespace
 2. **Workload Identity** (Current recommended approach) - deployed in `demo-app-wi` namespace
-3. **Identity Binding** (Newer simplified approach) - deployed in `demo-app-ib` namespace
+3. **Workload Identity with Proxy Mode** (Migration approach) - deployed in `demo-app-wi` namespace
+4. **Identity Binding** (Newer simplified approach) - deployed in `demo-app-ib` namespace
 
-All three approaches are demonstrated using the same Go application that fetches a secret from Azure Key Vault. Each demo runs in its own namespace to avoid conflicts and provide clear separation. **Each application demonstrates using multiple managed identities in a single pod**, which is a common real-world scenario.
+The workload identity and workload identity proxy mode demos share the same namespace since they both use the same underlying workload identity technology - the proxy mode simply adds a migration sidecar for backward compatibility. **Each application demonstrates using multiple managed identities in a single pod**, which is a common real-world scenario.
 
 ## Prerequisites
 
@@ -65,7 +66,16 @@ cd apps/demo-app-wi
 ./configure-and-deploy.sh ib-demo-rg
 ```
 
-#### Option C: Identity Binding Demo (Newest)
+#### Option C: Workload Identity with Proxy Mode (Migration)
+
+```bash
+cd apps/demo-app-wi-proxy
+./configure-and-deploy.sh ib-demo-rg
+```
+
+**Note**: This demonstrates the migration sidecar for applications that still rely on IMDS. The sidecar is not supported for production use and is meant as a temporary migration solution.
+
+#### Option D: Identity Binding Demo (Newest)
 
 ```bash
 cd apps/demo-app-ib
@@ -102,6 +112,26 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 # === Iteration at 2024-01-15 10:30:00 ===
 # [workload-identity] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
 # [workload-identity] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
+```
+
+### Workload Identity with Proxy Mode Demo (demo-app-wi namespace)
+```bash
+# Check deployment status
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl get pods -n demo-app-wi -l app=demo-app-wi-proxy
+
+# Check that the proxy sidecar was injected
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl describe pod -l app=demo-app-wi-proxy -n demo-app-wi
+
+# View application logs
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-app-wi-proxy -n demo-app-wi -c demo-app
+
+# View proxy sidecar logs
+KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-app-wi-proxy -n demo-app-wi -c azure-workload-identity-proxy
+
+# Expected output (main container):
+# === Iteration at 2024-01-15 10:30:00 ===
+# [workload-identity-proxy] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
+# [workload-identity-proxy] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
 
 ### Identity Binding Demo (demo-app-ib namespace)
@@ -143,6 +173,16 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 - **Setup Complexity**: Moderate setup with automated FIC management
 - **Use Case**: New applications, production workloads
 
+### Workload Identity with Proxy Mode (demo-app-wi namespace)
+- **Status**: Migration approach (not for production use)
+- **Components**: Built into AKS with migration sidecar injected by webhook
+- **Configuration**: Same as workload identity plus sidecar annotations
+- **RBAC Requirements**: Same FICs as workload identity
+- **Security**: Provides backward compatibility for IMDS-dependent applications
+- **Setup Complexity**: Same as workload identity with additional sidecar configuration
+- **Use Case**: Migration scenarios for legacy applications using IMDS, temporary solution only
+- **Limitations**: Linux containers only, not supported for production
+
 ### Identity Binding (demo-app-ib namespace)
 - **Status**: Newest approach using standard Kubernetes RBAC
 - **Components**: Uses ClusterRole and ClusterRoleBinding (no custom controllers)
@@ -155,20 +195,20 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    AKS Cluster                                  │
-│                                                                 │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │  demo-app-pi    │  │  demo-app-wi    │  │  demo-app-ib    │ │
-│  │   namespace     │  │   namespace     │  │   namespace     │ │
-│  │                 │  │                 │  │                 │ │
-│  │ ┌─────────────┐ │  │ ┌─────────────┐ │  │ ┌─────────────┐ │ │
-│  │ │ Pod Identity│ │  │ │  Workload   │ │  │ │  Identity   │ │ │
-│  │ │    Demo     │ │  │ │  Identity   │ │  │ │  Binding    │ │ │
-│  │ │    App      │ │  │ │    Demo     │ │  │ │    Demo     │ │ │
-│  │ └─────────────┘ │  │ └─────────────┘ │  │ └─────────────┘ │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                               AKS Cluster                                              │
+│                                                                                         │
+│ ┌─────────────┐ ┌─────────────────────────────────┐ ┌─────────────────┐              │
+│ │demo-app-pi  │ │        demo-app-wi              │ │  demo-app-ib    │              │
+│ │ namespace   │ │        namespace                │ │   namespace     │              │
+│ │             │ │                                 │ │                 │              │
+│ │┌───────────┐│ │┌───────────┐┌─────────────────┐│ │┌───────────────┐│              │
+│ ││Pod Identity││ ││ Workload  ││  Workload       ││ ││  Identity     ││              │
+│ ││   Demo    ││ ││ Identity  ││  Identity       ││ ││  Binding      ││              │
+│ ││   App     ││ ││   Demo    ││ Proxy Demo      ││ ││    Demo       ││              │
+│ │└───────────┘│ │└───────────┘└─────────────────┘│ │└───────────────┘│              │
+│ └─────────────┘ └─────────────────────────────────┘ └─────────────────┘              │
+└─────────────────────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
                     ┌─────────────────────────┐
@@ -189,14 +229,16 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 
 ### Managed Identity Usage
 
-- **MI 1 (`${namePrefix}-mi-1`)**: Used by all three demos to demonstrate multiple identity scenarios
+- **MI 1 (`${namePrefix}-mi-1`)**: Used by all four demos to demonstrate multiple identity scenarios
   - **Pod Identity**: Assigned to VMSS (manual step required)
   - **Workload Identity**: Has FIC for `demo-app-wi:workload-identity-sa`
+  - **Workload Identity Proxy**: Uses same FIC as workload identity (`demo-app-wi:workload-identity-sa`)
   - **Identity Binding**: Uses ClusterRole permissions
 
-- **MI 2 (`${namePrefix}-mi-2`)**: Used by all three demos to demonstrate multiple identity scenarios
+- **MI 2 (`${namePrefix}-mi-2`)**: Used by all four demos to demonstrate multiple identity scenarios
   - **Pod Identity**: Assigned to VMSS (manual step required)
   - **Workload Identity**: Has FIC for `demo-app-wi:workload-identity-sa` (primary identity)
+  - **Workload Identity Proxy**: Uses same FIC as workload identity (`demo-app-wi:workload-identity-sa`) (primary identity)
   - **Identity Binding**: Uses ClusterRole permissions (primary identity)
 
 ### Infrastructure Setup
@@ -213,6 +255,15 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 - ✅ **OIDC Integration**: Uses AKS OIDC issuer for token exchange
 - ✅ **Service Account Configuration**: Automatic annotation and volume mount setup
 - ❌ **No VMSS Assignment**: Not needed for workload identity
+
+#### **For Workload Identity Proxy Mode**:
+- ✅ **Federated Identity Credentials**: Uses the same FICs as regular workload identity
+- ✅ **Service Account**: Shares `workload-identity-sa` with regular workload identity demo
+- ✅ **OIDC Integration**: Uses AKS OIDC issuer for token exchange
+- ✅ **Migration Sidecar**: Automatically injected by Azure Workload Identity webhook
+- ✅ **IMDS Compatibility**: Provides IMDS endpoint at localhost:8000 for backward compatibility
+- ⚠️ **Linux Only**: Migration sidecar only supports Linux containers
+- ❌ **Not for Production**: This is a temporary migration solution only
 
 #### **For Identity Binding**:
 - ✅ **ClusterRole RBAC**: ClusterRole grants `use-managed-identity` verb for both MI client IDs
