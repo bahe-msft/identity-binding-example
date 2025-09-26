@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-ib-proxy
+  namespace: demo-app-ib
+  labels:
+    app: demo-app-ib-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-ib-proxy
+  template:
+    metadata:
+      labels:
+        app: demo-app-ib-proxy
+        azure.workload.identity/use: "true" # Enable workload identity
+      annotations:
+        azure.workload.identity/use-identity-binding: "true"
+        azure.workload.identity/inject-proxy-sidecar: "true" # Enable migration sidecar
+        azure.workload.identity/proxy-sidecar-port: "8000" # Set sidecar port (default is 8000)
+    spec:
+      serviceAccountName: identity-binding-sa
+      containers:
+        - name: demo-app
+          image: ghcr.io/bahe-msft/identity-binding-example-go:latest@sha256:912c6a64827e1e364aac8095642739605a74e98b6cbd85a5b16666df2bd91cda
+          env:
+            - name: AUTH_METHOD
+              value: "pod-identity"
+            - name: KEYVAULT_URL
+              value: "${KEYVAULT_URL}" # Replace with your Key Vault URL
+            - name: SECRET_NAME
+              value: "demo-secret"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+            # Multiple identity environment variables - demonstrates using multiple identities in one pod
+            - name: MANAGED_IDENTITY_1_CLIENT_ID
+              value: "${MANAGED_IDENTITY_1_CLIENT_ID}" # Replace with actual client ID
+            - name: MANAGED_IDENTITY_2_CLIENT_ID
+              value: "${MANAGED_IDENTITY_2_CLIENT_ID}" # Replace with actual client ID
+            # Environment variable to configure IMDS endpoint for migration scenario
+            - name: IMDS_ENDPOINT
+              value: "http://localhost:8000" # Points to the proxy sidecar
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
