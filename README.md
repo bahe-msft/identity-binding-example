@@ -181,7 +181,7 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-app-ib-proxy -n demo-app-ib -c azure-workload-identity-proxy
 
 # Expected output (main container):
-# === Iteration at 2024-01-15 10:30:00 ===
+# === Iteration at 2025-10-06 10:30:00 ===
 # [identity-binding-proxy] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "abc123..."
 # [identity-binding-proxy] retrieved secret content "Hello from Azure Key Vault! This is a demo secret." from akv using mi client id "def456..."
 ```
@@ -240,18 +240,18 @@ KUBECONFIG=./kubeconfig-ib-demo-rg-<cluster-name> kubectl logs -f -l app=demo-ap
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   AKS Cluster                                                    │
-│                                                                                                   │
-│ ┌─────────────┐ ┌─────────────────────────────────┐ ┌─────────────────────────────────┐        │
-│ │demo-app-pi  │ │        demo-app-wi              │ │        demo-app-ib              │        │
-│ │ namespace   │ │        namespace                │ │        namespace                │        │
-│ │             │ │                                 │ │                                 │        │
-│ │┌───────────┐│ │┌───────────┐┌─────────────────┐│ │┌───────────┐┌─────────────────┐│        │
-│ ││Pod Identity││ ││ Workload  ││  Workload       ││ ││ Identity  ││  Identity       ││        │
-│ ││   Demo    ││ ││ Identity  ││  Identity       ││ ││ Binding   ││  Binding        ││        │
-│ ││   App     ││ ││   Demo    ││ Proxy Demo      ││ ││   Demo    ││ Proxy Demo      ││        │
-│ │└───────────┘│ │└───────────┘└─────────────────┘│ │└───────────┘└─────────────────┘│        │
-│ └─────────────┘ └─────────────────────────────────┘ └─────────────────────────────────┘        │
+│                                   AKS Cluster                                                 │
+│                                                                                               │
+│ ┌─────────────┐ ┌─────────────────────────────────┐ ┌─────────────────────────────────┐       │
+│ │demo-app-pi  │ │        demo-app-wi              │ │        demo-app-ib              │       │
+│ │ namespace   │ │        namespace                │ │        namespace                │       │
+│ │             │ │                                 │ │                                 │       │
+│ │┌───────────┐│ │┌───────────┐┌─────────────────┐ │ │┌───────────┐┌─────────────────┐ │       │
+│ ││Pod Identity│ │││ Workload ││  Workload       │ │ ││ Identity  ││  Identity       │ │       │
+│ ││   Demo    ││ ││ Identity  ││  Identity       │ │ ││ Binding   ││  Binding        │ │       │
+│ ││   App     ││ ││   Demo    ││ Proxy Demo      │ │ ││   Demo    ││ Proxy Demo      │ │       │
+│ │└───────────┘│ │└───────────┘└─────────────────┘ │ │└───────────┘└─────────────────┘ │       │
+│ └─────────────┘ └─────────────────────────────────┘ └─────────────────────────────────┘       │
 └───────────────────────────────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
