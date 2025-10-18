@@ -1,3 +1,43 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app-ib
+  labels:
+    name: demo-app-ib
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: identity-binding-sa
+  namespace: demo-app-ib
+  labels:
+    app: demo-app-ib-proxy
+---
+# ClusterRole for Identity Binding - allows using both managed identities
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: identity-binding-role
+rules:
+  - verbs: ["use-managed-identity"]
+    apiGroups: ["cid.wi.aks.azure.com"]
+    resources:
+      ["${MANAGED_IDENTITY_1_CLIENT_ID}", "${MANAGED_IDENTITY_2_CLIENT_ID}"]
+---
+# ClusterRoleBinding to bind the role to the service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: identity-binding-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: identity-binding-role
+subjects:
+  - kind: ServiceAccount
+    name: identity-binding-sa
+    namespace: demo-app-ib
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
