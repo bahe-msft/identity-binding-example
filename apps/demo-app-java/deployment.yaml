@@ -23,8 +23,7 @@ metadata:
 rules:
   - verbs: ["use-managed-identity"]
     apiGroups: ["cid.wi.aks.azure.com"]
-    resources:
-      ["${MANAGED_IDENTITY_CLIENT_ID}"]
+    resources: ["${MANAGED_IDENTITY_CLIENT_ID}"]
 ---
 # ClusterRoleBinding to bind the role to the service account
 apiVersion: rbac.authorization.k8s.io/v1
@@ -61,6 +60,7 @@ spec:
         azure.workload.identity/use-identity-binding: "true"
         azure.workload.identity/inject-proxy-sidecar: "true" # Enable migration sidecar
         azure.workload.identity/proxy-sidecar-port: "8000" # Set sidecar port (default is 8000)
+        azure.workload.identity/skip-containers: "demo-app-java" # Skip injection in main container as Java SDK has a special logic around AZURE_FEDERATED_TOKEN_FILE
     spec:
       serviceAccountName: demo-app-java-sa
       containers:
