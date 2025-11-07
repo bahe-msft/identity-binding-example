@@ -70,12 +70,6 @@ spec:
           env:
             - name: AZURE_HTTP_LOG_DETAIL_LEVEL
               value: BODY_AND_HEADERS
-            # https://github.com/AzureAD/microsoft-authentication-library-for-java/blob/c75065baa383043c71ed9d4fc79a94306ca67f29/msal4j-sdk/src/main/java/com/microsoft/aad/msal4j/Constants.java
-            # IMDS_ENDPOINT
-            # The problem is the SDK fixed the imds endpoint per env var
-            # https://github.com/AzureAD/microsoft-authentication-library-for-java/blob/c75065baa383043c71ed9d4fc79a94306ca67f29/msal4j-sdk/src/main/java/com/microsoft/aad/msal4j/ManagedIdentityClient.java#L11-L28
-            - name: MSI_ENDPOINT
-              value: http://localhost:8000
             - name: KEYVAULT_URL
               value: "${KEYVAULT_URL}"
             - name: SECRET_NAME
