@@ -22,6 +22,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
+  - apiGroups: ["cid.wi.aks.azure.com"]
+    verbs: ["use-managed-identity"]
+    resources: ["test-client-id"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
