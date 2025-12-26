@@ -1,0 +1,10 @@
+namespace: demo-app-delegation
+
+resources:
+  - manager-rbac.yaml
+  - manager-deployment.yaml
+
+configMapGenerator:
+  - name: demo-app-delegation-config
+    files:
+      - config-app-pod.yaml

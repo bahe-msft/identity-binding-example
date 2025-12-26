@@ -1,0 +1,36 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-creator
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings", "clusterroles"]
+    verbs: ["create", "get", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: manager-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: default
+roleRef:
+  kind: ClusterRole
+  name: pod-creator
+  apiGroup: rbac.authorization.k8s.io
