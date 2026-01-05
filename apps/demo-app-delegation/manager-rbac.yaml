@@ -24,7 +24,7 @@ rules:
     verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
   - apiGroups: ["cid.wi.aks.azure.com"]
     verbs: ["use-managed-identity"]
-    resources: ["test-client-id"]
+    resources: ["<app-MI-id>"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -36,4 +36,25 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: pod-creator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-ib-request
+rules:
+  - apiGroups: ["cid.wi.aks.azure.com"]
+    verbs: ["use-managed-identity"]
+    resources: ["<manager-MI-id>"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: manager-ib-request-role
+subjects:
+  - kind: ServiceAccount
+    name: default
+roleRef:
+  kind: ClusterRole
+  name: manager-ib-request
   apiGroup: rbac.authorization.k8s.io
