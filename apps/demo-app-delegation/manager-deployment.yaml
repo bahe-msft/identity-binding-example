@@ -14,6 +14,8 @@ spec:
         azure.workload.identity/use: "true"
       annotations:
         azure.workload.identity/use-identity-binding: "true"
+        azure.workload.identity/inject-proxy-sidecar: "true" # Enable migration sidecar
+        azure.workload.identity/proxy-sidecar-port: "8000" # Set sidecar port (default is 8000)
     spec:
       serviceAccountName: default
       containers:
